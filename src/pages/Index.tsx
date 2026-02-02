@@ -6,15 +6,21 @@ import { TimetableView } from '@/components/TimetableView';
 import { RemindersView } from '@/components/RemindersView';
 import { SettingsView } from '@/components/SettingsView';
 import { EventForm } from '@/components/EventForm';
+import { TimetableUpload } from '@/components/TimetableUpload';
 import { useReminderChecker, requestNotificationPermission } from '@/lib/reminders';
 import { ClassEvent, deleteEvent } from '@/lib/db';
+import { useTheme } from '@/hooks/useTheme';
 import { toast } from 'sonner';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('today');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ClassEvent | undefined>();
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Initialize theme
+  useTheme();
 
   // Run reminder checker
   useReminderChecker(30000); // Check every 30 seconds
@@ -62,6 +68,10 @@ const Index = () => {
     setEditingEvent(undefined);
   }, []);
 
+  const handleUploadClassesAdded = useCallback(() => {
+    setRefreshKey(k => k + 1);
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'today':
@@ -77,7 +87,8 @@ const Index = () => {
           <TimetableView 
             key={`timetable-${refreshKey}`}
             onEditEvent={handleEditEvent} 
-            onDeleteEvent={handleDeleteEvent} 
+            onDeleteEvent={handleDeleteEvent}
+            onUploadClick={() => setIsUploadOpen(true)}
           />
         );
       case 'reminders':
@@ -114,6 +125,12 @@ const Index = () => {
         isOpen={isFormOpen}
         onClose={handleFormClose}
         onSave={handleFormSave}
+      />
+
+      <TimetableUpload
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onClassesAdded={handleUploadClassesAdded}
       />
     </div>
   );

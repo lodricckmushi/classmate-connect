@@ -31,6 +31,8 @@ export interface AppSettings {
   defaultReminderMinutes: number[];
   voiceVolume: number;
   voiceRate: number;
+  theme: 'light' | 'dark' | 'system';
+  colorTheme: 'coral' | 'ocean' | 'forest' | 'violet' | 'sunset';
 }
 
 export interface WeeklySummary {
@@ -241,6 +243,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultReminderMinutes: [10, 30],
   voiceVolume: 1,
   voiceRate: 1,
+  theme: 'system',
+  colorTheme: 'coral',
 };
 
 export async function getSettings(): Promise<AppSettings> {

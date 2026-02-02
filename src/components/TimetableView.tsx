@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Calendar, Upload } from 'lucide-react';
 import { useWeeklyEvents } from '@/hooks/useEvents';
 import { EventCard } from '@/components/EventCard';
 import { Header } from '@/components/Header';
+import { Button } from '@/components/ui/button';
 import { ClassEvent } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
 interface TimetableViewProps {
   onEditEvent: (event: ClassEvent) => void;
   onDeleteEvent: (id: string) => void;
+  onUploadClick: () => void;
 }
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export function TimetableView({ onEditEvent, onDeleteEvent }: TimetableViewProps) {
+export function TimetableView({ onEditEvent, onDeleteEvent, onUploadClick }: TimetableViewProps) {
   const { eventsByDay, loading } = useWeeklyEvents();
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
 
@@ -40,6 +42,15 @@ export function TimetableView({ onEditEvent, onDeleteEvent }: TimetableViewProps
       />
 
       <main className="px-4 py-4">
+        {/* Upload button */}
+        <Button
+          onClick={onUploadClick}
+          variant="outline"
+          className="mb-4 w-full gap-2"
+        >
+          <Upload className="h-4 w-4" />
+          Upload Timetable (PDF/Image)
+        </Button>
         {/* Day selector */}
         <div className="mb-6 overflow-x-auto scrollbar-hide">
           <div className="flex gap-2">

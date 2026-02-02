@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
-import { Bell, Volume2, Trash2, Download, Info, ChevronRight } from 'lucide-react';
+import { Bell, Volume2, Trash2, Download, Info, Palette } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { ThemeSettings } from '@/components/ThemeSettings';
 import { useSettings } from '@/hooks/useSettings';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { requestNotificationPermission, speakText } from '@/lib/reminders';
@@ -8,7 +9,6 @@ import { clearAllData } from '@/lib/db';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export function SettingsView() {
@@ -116,6 +116,16 @@ export function SettingsView() {
             </div>
           </motion.div>
         )}
+
+        {/* Theme section */}
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Theme
+          </h2>
+          <div className="rounded-2xl bg-card p-4 shadow-card">
+            <ThemeSettings />
+          </div>
+        </section>
 
         {/* Notifications section */}
         <section>
