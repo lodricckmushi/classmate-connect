@@ -1,9 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { version } from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 import { ClassEvent } from './db';
 
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
+// Set up PDF.js worker - version MUST match installed package
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.js`;
 
 export interface ParsedClass {
   title: string;
