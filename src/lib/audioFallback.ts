@@ -149,11 +149,53 @@ export function playMorsePattern(text: string, volume: number = 0.3): Promise<vo
   });
 }
 
+// Generate a more human-friendly reminder message
+export function humanizeReminderText(
+  eventTitle: string,
+  minutesBefore: number,
+  location?: string
+): string {
+  const greetings = [
+    "Hey there! Just a quick heads up",
+    "Hi! Friendly reminder",
+    "Hello! Don't forget",
+    "Quick reminder for you",
+  ];
+  const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+  
+  let timePhrase: string;
+  if (minutesBefore === 1) {
+    timePhrase = "in just 1 minute";
+  } else if (minutesBefore <= 5) {
+    timePhrase = `in about ${minutesBefore} minutes`;
+  } else if (minutesBefore === 10) {
+    timePhrase = "in 10 minutes";
+  } else if (minutesBefore === 15) {
+    timePhrase = "in about 15 minutes";
+  } else if (minutesBefore === 30) {
+    timePhrase = "in half an hour";
+  } else if (minutesBefore === 60) {
+    timePhrase = "in about an hour";
+  } else {
+    timePhrase = `in ${minutesBefore} minutes`;
+  }
+  
+  let message = `${greeting}! ${eventTitle} is starting ${timePhrase}`;
+  
+  if (location) {
+    message += `. Head over to ${location}`;
+  }
+  
+  message += ". You've got this!";
+  
+  return message;
+}
+
 // Speak using fallback audio when TTS unavailable
 export async function speakWithFallback(
   text: string,
   volume: number = 1,
-  rate: number = 1
+  rate: number = 0.9 // Slightly slower for clarity
 ): Promise<void> {
   // Try Web Speech API first
   if ('speechSynthesis' in window) {
@@ -165,12 +207,17 @@ export async function speakWithFallback(
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.volume = volume;
         utterance.rate = rate;
-        utterance.pitch = 1;
+        utterance.pitch = 1.05; // Slightly higher for friendlier tone
 
         // Try to use a natural voice
         const voices = window.speechSynthesis.getVoices();
         const preferredVoice = voices.find(v =>
-          v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google'))
+          v.lang.startsWith('en') && (
+            v.name.includes('Natural') || 
+            v.name.includes('Google') ||
+            v.name.includes('Samantha') ||
+            v.name.includes('Karen')
+          )
         ) || voices.find(v => v.lang.startsWith('en'));
 
         if (preferredVoice) {
@@ -189,7 +236,6 @@ export async function speakWithFallback(
         utterance.onerror = (e) => {
           if (!resolved) {
             resolved = true;
-            // Don't reject, fall through to audio fallback
             reject(e);
           }
         };
@@ -201,7 +247,7 @@ export async function speakWithFallback(
             window.speechSynthesis.cancel();
             reject(new Error('Speech timeout'));
           }
-        }, 10000);
+        }, 15000);
 
         window.speechSynthesis.speak(utterance);
       });

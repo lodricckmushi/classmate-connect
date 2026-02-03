@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { getSettings, getUpcomingReminders, markReminderTriggered, getEvent, Reminder } from '@/lib/db';
-import { speakWithFallback, playNotificationBeep, playReminderSound } from '@/lib/audioFallback';
+import { speakWithFallback, playNotificationBeep, playReminderSound, humanizeReminderText } from '@/lib/audioFallback';
 
 // Check if notifications are supported and permission granted
 export async function requestNotificationPermission(): Promise<boolean> {
@@ -61,11 +61,53 @@ export function playNotificationSound(): void {
   playNotificationBeep(0.4);
 }
 
-// Show a browser notification
+// Show a browser notification (basic)
 export async function showNotification(title: string, body: string, tag?: string): Promise<void> {
   const hasPermission = await requestNotificationPermission();
   if (!hasPermission) return;
 
+  const notification = new Notification(title, {
+    body,
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    tag: tag || `classping-${Date.now()}`,
+    requireInteraction: true,
+  });
+
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+  };
+}
+
+// Show persistent notification that requires user action to dismiss
+export async function showPersistentNotification(title: string, body: string, tag?: string): Promise<void> {
+  const hasPermission = await requestNotificationPermission();
+  if (!hasPermission) return;
+
+  // Try to use service worker for persistent notification with actions
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
+        body,
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        tag: tag || `classping-${Date.now()}`,
+        requireInteraction: true, // Won't dismiss until user clicks
+        actions: [
+          { action: 'ok', title: '✓ Got it!' },
+          { action: 'snooze', title: '⏰ Snooze 5min' }
+        ],
+        data: { tag, timestamp: Date.now() }
+      } as NotificationOptions);
+      return;
+    } catch (e) {
+      console.warn('Service worker notification failed:', e);
+    }
+  }
+
+  // Fallback to regular notification
   const notification = new Notification(title, {
     body,
     icon: '/pwa-192x192.png',
@@ -90,29 +132,30 @@ export async function triggerReminder(reminder: Reminder): Promise<void> {
     return;
   }
 
-  const minutesText = reminder.minutesBefore === 1 
-    ? '1 minute' 
-    : `${reminder.minutesBefore} minutes`;
+  // Generate human-friendly message
+  const humanMessage = humanizeReminderText(
+    event.title,
+    reminder.minutesBefore,
+    event.location
+  );
 
   const notificationTitle = `📚 ${event.title}`;
-  const notificationBody = `Starting in ${minutesText}${event.location ? ` at ${event.location}` : ''}`;
+  const notificationBody = humanMessage;
 
   // Play attention-grabbing sound
   playNotificationSound();
 
-  // Show notification (works even when app is in background on mobile)
+  // Show persistent notification (requires user to click OK to dismiss)
   if (settings.notificationsEnabled) {
-    await showNotification(notificationTitle, notificationBody, reminder.id);
+    await showPersistentNotification(notificationTitle, notificationBody, reminder.id);
   }
 
-  // Voice reminder with automatic fallback
+  // Voice reminder with human-friendly message
   if (settings.voiceRemindersEnabled && event.voiceReminderEnabled) {
-    const voiceText = `Reminder: ${event.title} starts in ${minutesText}${event.location ? ` at ${event.location}` : ''}`;
     try {
-      await speakText(voiceText, settings.voiceVolume, settings.voiceRate);
+      await speakText(humanMessage, settings.voiceVolume, settings.voiceRate);
     } catch (e) {
       console.warn('Voice reminder failed, playing fallback sound:', e);
-      // Play distinctive audio pattern as fallback
       await playReminderSound({ volume: settings.voiceVolume, urgency: 'high' });
     }
   }
