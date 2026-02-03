@@ -54,12 +54,21 @@ export function EventForm({ event, isOpen, onClose, onSave }: EventFormProps) {
       setReminderMinutes(event.reminderMinutes);
       setVoiceEnabled(event.voiceReminderEnabled);
     } else {
-      // Reset form
+      // Reset form with current time as default
+      const now = new Date();
+      const currentHour = now.getHours().toString().padStart(2, '0');
+      const currentMinute = now.getMinutes().toString().padStart(2, '0');
+      const currentTime = `${currentHour}:${currentMinute}`;
+      
+      // End time is 1 hour from now
+      const endHour = ((now.getHours() + 1) % 24).toString().padStart(2, '0');
+      const endTimeValue = `${endHour}:${currentMinute}`;
+      
       setTitle('');
       setLocation('');
-      setDayOfWeek(new Date().getDay() || 1);
-      setStartTime('09:00');
-      setEndTime('10:00');
+      setDayOfWeek(now.getDay() || 1);
+      setStartTime(currentTime);
+      setEndTime(endTimeValue);
       setColor(colorOptions[0]);
       setReminderMinutes([10]);
       setVoiceEnabled(true);
