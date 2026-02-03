@@ -78,6 +78,44 @@ async function markReminderTriggered(reminderId) {
   }
 }
 
+// Generate human-friendly message
+function humanizeReminderText(eventTitle, minutesBefore, location) {
+  const greetings = [
+    "Hey there! Just a quick heads up",
+    "Hi! Friendly reminder",
+    "Hello! Don't forget",
+    "Quick reminder for you",
+  ];
+  const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+  
+  let timePhrase;
+  if (minutesBefore === 1) {
+    timePhrase = "in just 1 minute";
+  } else if (minutesBefore <= 5) {
+    timePhrase = `in about ${minutesBefore} minutes`;
+  } else if (minutesBefore === 10) {
+    timePhrase = "in 10 minutes";
+  } else if (minutesBefore === 15) {
+    timePhrase = "in about 15 minutes";
+  } else if (minutesBefore === 30) {
+    timePhrase = "in half an hour";
+  } else if (minutesBefore === 60) {
+    timePhrase = "in about an hour";
+  } else {
+    timePhrase = `in ${minutesBefore} minutes`;
+  }
+  
+  let message = `${greeting}! ${eventTitle} is starting ${timePhrase}`;
+  
+  if (location) {
+    message += `. Head over to ${location}`;
+  }
+  
+  message += ". You've got this!";
+  
+  return message;
+}
+
 // Check for due reminders and show notifications
 async function checkReminders() {
   const now = Date.now();
@@ -88,23 +126,30 @@ async function checkReminders() {
       const event = await getEvent(reminder.eventId);
       
       if (event) {
-        const minutesText = reminder.minutesBefore === 1 
-          ? '1 minute' 
-          : `${reminder.minutesBefore} minutes`;
+        const humanMessage = humanizeReminderText(
+          event.title,
+          reminder.minutesBefore,
+          event.location
+        );
         
-        // Show notification
+        // Show persistent notification with friendly actions
         self.registration.showNotification(`📚 ${event.title}`, {
-          body: `Starting in ${minutesText}${event.location ? ` at ${event.location}` : ''}`,
+          body: humanMessage,
           icon: '/pwa-192x192.png',
           badge: '/pwa-192x192.png',
           tag: `reminder-${reminder.id}`,
-          requireInteraction: true,
-          vibrate: [200, 100, 200, 100, 200],
+          requireInteraction: true, // Won't dismiss until user interacts
+          vibrate: [200, 100, 200, 100, 300],
           actions: [
-            { action: 'dismiss', title: 'Dismiss' },
-            { action: 'view', title: 'View' }
+            { action: 'ok', title: '✓ Got it!' },
+            { action: 'snooze', title: '⏰ Snooze 5min' }
           ],
-          data: { eventId: event.id, reminderId: reminder.id }
+          data: { 
+            eventId: event.id, 
+            reminderId: reminder.id,
+            eventTitle: event.title,
+            location: event.location
+          }
         });
         
         await markReminderTriggered(reminder.id);
@@ -115,12 +160,36 @@ async function checkReminders() {
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  const action = event.action;
+  const data = event.notification.data || {};
   
-  if (event.action === 'view' || !event.action) {
+  if (action === 'ok' || action === 'dismiss') {
+    // User acknowledged - close notification
+    event.notification.close();
+  } else if (action === 'snooze') {
+    // Snooze for 5 minutes - show another notification
+    event.notification.close();
+    event.waitUntil(
+      (async () => {
+        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+        self.registration.showNotification(`⏰ Reminder: ${data.eventTitle || 'Your class'}`, {
+          body: `This is your snoozed reminder. Time to go${data.location ? ` to ${data.location}` : ''}!`,
+          icon: '/pwa-192x192.png',
+          badge: '/pwa-192x192.png',
+          tag: `snooze-${Date.now()}`,
+          requireInteraction: true,
+          vibrate: [300, 100, 300],
+          actions: [
+            { action: 'ok', title: '✓ Got it!' }
+          ]
+        });
+      })()
+    );
+  } else {
+    // Default click - open/focus app
+    event.notification.close();
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        // Focus existing window or open new one
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
             return client.focus();
