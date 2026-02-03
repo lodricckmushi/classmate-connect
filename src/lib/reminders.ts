@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { getSettings, getUpcomingReminders, markReminderTriggered, getEvent, Reminder } from '@/lib/db';
+import { speakWithFallback, playNotificationBeep, playReminderSound } from '@/lib/audioFallback';
 
 // Check if notifications are supported and permission granted
 export async function requestNotificationPermission(): Promise<boolean> {
@@ -20,65 +21,44 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return false;
 }
 
+// Register service worker for background notifications
+export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service Worker not supported');
+    return null;
+  }
+
+  try {
+    // The PWA plugin handles the main SW, but we add our custom one
+    const registration = await navigator.serviceWorker.ready;
+    console.log('Service Worker ready for notifications');
+    return registration;
+  } catch (e) {
+    console.warn('Service Worker registration failed:', e);
+    return null;
+  }
+}
+
+// Notify service worker about reminder changes
+export function notifyServiceWorker(type: string, data?: any): void {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type, ...data });
+  }
+}
+
 // Check if speech synthesis is supported
 export function isSpeechSupported(): boolean {
   return 'speechSynthesis' in window;
 }
 
-// Speak text using Web Speech API
-export function speakText(text: string, volume: number = 1, rate: number = 1): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (!isSpeechSupported()) {
-      reject(new Error('Speech synthesis not supported'));
-      return;
-    }
-
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.volume = volume;
-    utterance.rate = rate;
-    utterance.pitch = 1;
-    
-    // Try to use a natural voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => 
-      v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google'))
-    ) || voices.find(v => v.lang.startsWith('en'));
-    
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-
-    utterance.onend = () => resolve();
-    utterance.onerror = (e) => reject(e);
-
-    window.speechSynthesis.speak(utterance);
-  });
+// Speak text using Web Speech API with fallback
+export async function speakText(text: string, volume: number = 1, rate: number = 1): Promise<void> {
+  return speakWithFallback(text, volume, rate);
 }
 
 // Play a notification sound
 export function playNotificationSound(): void {
-  try {
-    // Create a simple beep sound using Web Audio API
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
-  } catch (e) {
-    console.warn('Could not play notification sound:', e);
-  }
+  playNotificationBeep(0.4);
 }
 
 // Show a browser notification
@@ -117,21 +97,23 @@ export async function triggerReminder(reminder: Reminder): Promise<void> {
   const notificationTitle = `📚 ${event.title}`;
   const notificationBody = `Starting in ${minutesText}${event.location ? ` at ${event.location}` : ''}`;
 
-  // Play sound
+  // Play attention-grabbing sound
   playNotificationSound();
 
-  // Show notification
+  // Show notification (works even when app is in background on mobile)
   if (settings.notificationsEnabled) {
     await showNotification(notificationTitle, notificationBody, reminder.id);
   }
 
-  // Voice reminder
+  // Voice reminder with automatic fallback
   if (settings.voiceRemindersEnabled && event.voiceReminderEnabled) {
     const voiceText = `Reminder: ${event.title} starts in ${minutesText}${event.location ? ` at ${event.location}` : ''}`;
     try {
       await speakText(voiceText, settings.voiceVolume, settings.voiceRate);
     } catch (e) {
-      console.warn('Voice reminder failed:', e);
+      console.warn('Voice reminder failed, playing fallback sound:', e);
+      // Play distinctive audio pattern as fallback
+      await playReminderSound({ volume: settings.voiceVolume, urgency: 'high' });
     }
   }
 

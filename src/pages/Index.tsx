@@ -7,7 +7,7 @@ import { RemindersView } from '@/components/RemindersView';
 import { SettingsView } from '@/components/SettingsView';
 import { EventForm } from '@/components/EventForm';
 import { TimetableUpload } from '@/components/TimetableUpload';
-import { useReminderChecker, requestNotificationPermission } from '@/lib/reminders';
+import { useReminderChecker, requestNotificationPermission, registerServiceWorker } from '@/lib/reminders';
 import { ClassEvent, deleteEvent } from '@/lib/db';
 import { useTheme } from '@/hooks/useTheme';
 import { toast } from 'sonner';
@@ -25,9 +25,10 @@ const Index = () => {
   // Run reminder checker
   useReminderChecker(30000); // Check every 30 seconds
 
-  // Request notification permission on mount
+  // Request notification permission and register service worker on mount
   useEffect(() => {
     requestNotificationPermission();
+    registerServiceWorker();
   }, []);
 
   // Check URL params for add action
