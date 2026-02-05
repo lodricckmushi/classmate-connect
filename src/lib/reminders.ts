@@ -3,7 +3,7 @@ import { getSettings, getUpcomingReminders, markReminderTriggered, getEvent, Rem
 import { speakWithFallback, playNotificationBeep, playReminderSound, humanizeReminderText } from '@/lib/audioFallback';
 
 // Check if notifications are supported and permission granted
-export async function requestNotificationPermission(): Promise<boolean> {
+ export async function requestNotificationPermission(skipAutoRequest: boolean = false): Promise<boolean> {
   if (!('Notification' in window)) {
     console.warn('Notifications not supported');
     return false;
@@ -13,13 +13,22 @@ export async function requestNotificationPermission(): Promise<boolean> {
     return true;
   }
 
-  if (Notification.permission !== 'denied') {
+   // Only request if explicitly allowed (not on auto/load)
+   if (!skipAutoRequest && Notification.permission !== 'denied') {
     const permission = await Notification.requestPermission();
     return permission === 'granted';
   }
 
   return false;
 }
+
+ // Check current permission state without requesting
+ export function getNotificationPermissionState(): 'granted' | 'denied' | 'default' | 'unsupported' {
+   if (!('Notification' in window)) {
+     return 'unsupported';
+   }
+   return Notification.permission;
+ }
 
 // Register service worker for background notifications
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
