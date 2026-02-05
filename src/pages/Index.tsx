@@ -7,8 +7,9 @@ import { RemindersView } from '@/components/RemindersView';
 import { SettingsView } from '@/components/SettingsView';
 import { EventForm } from '@/components/EventForm';
 import { TimetableUpload } from '@/components/TimetableUpload';
-import { useReminderChecker, requestNotificationPermission, registerServiceWorker } from '@/lib/reminders';
-import { ClassEvent, deleteEvent } from '@/lib/db';
+ import { NotificationOnboarding } from '@/components/NotificationOnboarding';
+ import { useReminderChecker, registerServiceWorker, getNotificationPermissionState } from '@/lib/reminders';
+ import { ClassEvent, deleteEvent, getSettings, updateSettings } from '@/lib/db';
 import { useTheme } from '@/hooks/useTheme';
 import { toast } from 'sonner';
 
@@ -18,6 +19,8 @@ const Index = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ClassEvent | undefined>();
   const [refreshKey, setRefreshKey] = useState(0);
+   const [showOnboarding, setShowOnboarding] = useState(false);
+   const [isLoading, setIsLoading] = useState(true);
 
   // Initialize theme
   useTheme();
@@ -25,10 +28,27 @@ const Index = () => {
   // Run reminder checker
   useReminderChecker(30000); // Check every 30 seconds
 
-  // Request notification permission and register service worker on mount
+   // Check if onboarding is needed and register service worker
   useEffect(() => {
-    requestNotificationPermission();
-    registerServiceWorker();
+     const init = async () => {
+       // Register service worker (doesn't require permission)
+       registerServiceWorker();
+       
+       // Check if we need to show onboarding
+       const settings = await getSettings();
+       const permissionState = getNotificationPermissionState();
+       
+       // Show onboarding if:
+       // 1. Onboarding not completed AND
+       // 2. Permission not already granted
+       if (!settings.onboardingCompleted && permissionState !== 'granted') {
+         setShowOnboarding(true);
+       }
+       
+       setIsLoading(false);
+     };
+     
+     init();
   }, []);
 
   // Check URL params for add action
@@ -40,6 +60,14 @@ const Index = () => {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+   const handleOnboardingComplete = useCallback(async () => {
+     await updateSettings({ 
+       onboardingCompleted: true,
+       permissionAskedAt: Date.now()
+     });
+     setShowOnboarding(false);
+   }, []);
 
   const handleAddClick = () => {
     setEditingEvent(undefined);
@@ -100,6 +128,20 @@ const Index = () => {
         return <TodayView onEditEvent={handleEditEvent} onDeleteEvent={handleDeleteEvent} />;
     }
   };
+
+   // Show loading state briefly
+   if (isLoading) {
+     return (
+       <div className="min-h-screen bg-background flex items-center justify-center">
+         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+       </div>
+     );
+   }
+
+   // Show onboarding if needed
+   if (showOnboarding) {
+     return <NotificationOnboarding onComplete={handleOnboardingComplete} />;
+   }
 
   return (
     <div className="min-h-screen bg-background">

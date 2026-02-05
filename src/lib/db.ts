@@ -33,6 +33,8 @@ export interface AppSettings {
   voiceRate: number;
   theme: 'light' | 'dark' | 'system';
   colorTheme: 'coral' | 'ocean' | 'forest' | 'violet' | 'sunset';
+   onboardingCompleted: boolean;
+   permissionAskedAt: number | null;
 }
 
 export interface WeeklySummary {
@@ -245,6 +247,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   voiceRate: 1,
   theme: 'system',
   colorTheme: 'coral',
+   onboardingCompleted: false,
+   permissionAskedAt: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
