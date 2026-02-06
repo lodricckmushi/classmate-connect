@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Bell, Volume2, Trash2, Download, Info, Palette } from 'lucide-react';
+import { Bell, Volume2, Trash2, Download, Info, Palette, Timer } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { ThemeSettings } from '@/components/ThemeSettings';
 import { useSettings } from '@/hooks/useSettings';
@@ -9,6 +9,7 @@ import { clearAllData } from '@/lib/db';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 export function SettingsView() {
@@ -141,7 +142,28 @@ export function SettingsView() {
                 <Switch
                   checked={settings.notificationsEnabled}
                   onCheckedChange={handleNotificationToggle}
+                  className="scale-90"
                 />
+              }
+            />
+            <SettingItem
+              icon={Timer}
+              title="Alarm Repeat"
+              description="Re-trigger interval"
+              action={
+                <Select
+                  value={String(settings.alarmRetriggerInterval || 15)}
+                  onValueChange={(v) => update({ alarmRetriggerInterval: Number(v) as 10 | 15 | 30 })}
+                >
+                  <SelectTrigger className="w-20 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10s</SelectItem>
+                    <SelectItem value="15">15s</SelectItem>
+                    <SelectItem value="30">30s</SelectItem>
+                  </SelectContent>
+                </Select>
               }
             />
           </div>

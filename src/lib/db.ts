@@ -31,6 +31,7 @@ export interface AppSettings {
   defaultReminderMinutes: number[];
   voiceVolume: number;
   voiceRate: number;
+  alarmRetriggerInterval: 10 | 15 | 30;
   theme: 'light' | 'dark' | 'system';
   colorTheme: 'coral' | 'ocean' | 'forest' | 'violet' | 'sunset';
    onboardingCompleted: boolean;
@@ -245,6 +246,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultReminderMinutes: [10, 30],
   voiceVolume: 1,
   voiceRate: 1,
+  alarmRetriggerInterval: 15,
   theme: 'system',
   colorTheme: 'coral',
    onboardingCompleted: false,
