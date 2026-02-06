@@ -2,7 +2,11 @@
 // This handles reminder notifications even when the app is closed
 
 const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
+const ALARM_RE_TRIGGER_INTERVAL = 15000; // Re-trigger every 15 seconds until acknowledged
 const REMINDERS_STORE = 'classping-reminders';
+
+// Track unacknowledged reminders that need to keep alarming
+const unacknowledgedReminders = new Map(); // reminderId -> { eventTitle, location, minutesBefore, intervalId }
 
 // Store reminders in IndexedDB accessible by service worker
 async function openDB() {
@@ -116,6 +120,65 @@ function humanizeReminderText(eventTitle, minutesBefore, location) {
   return message;
 }
 
+// Show alarm notification for a reminder
+function showAlarmNotification(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore) {
+  self.registration.showNotification(`📚 ${eventTitle}`, {
+    body: humanMessage,
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    tag: `reminder-${reminderId}`,
+    requireInteraction: true,
+    vibrate: [300, 100, 300, 100, 300, 100, 500],
+    actions: [
+      { action: 'ok', title: '✓ Got it!' },
+      { action: 'snooze', title: '⏰ Snooze 5min' }
+    ],
+    data: { 
+      eventId,
+      reminderId,
+      eventTitle,
+      location,
+      minutesBefore
+    }
+  });
+}
+
+// Start alarm loop - keeps re-triggering until user clicks "Got it!"
+function startAlarmLoop(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore) {
+  // Don't duplicate
+  if (unacknowledgedReminders.has(reminderId)) return;
+
+  // Show immediately
+  showAlarmNotification(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore);
+
+  // Re-trigger every 15 seconds until acknowledged
+  const intervalId = setInterval(() => {
+    if (!unacknowledgedReminders.has(reminderId)) {
+      clearInterval(intervalId);
+      return;
+    }
+    // Re-show notification (replaces previous via same tag)
+    showAlarmNotification(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore);
+  }, ALARM_RE_TRIGGER_INTERVAL);
+
+  unacknowledgedReminders.set(reminderId, { intervalId, eventTitle, location, minutesBefore });
+}
+
+// Stop alarm loop for a reminder and notify frontend
+function stopAlarmLoop(reminderId) {
+  const entry = unacknowledgedReminders.get(reminderId);
+  if (entry) {
+    clearInterval(entry.intervalId);
+    unacknowledgedReminders.delete(reminderId);
+  }
+  // Notify all app windows to stop their alarm too
+  clients.matchAll({ type: 'window' }).then((windowClients) => {
+    windowClients.forEach((client) => {
+      client.postMessage({ type: 'REMINDER_ACKNOWLEDGED', reminderId });
+    });
+  });
+}
+
 // Check for due reminders and show notifications
 async function checkReminders() {
   const now = Date.now();
@@ -132,25 +195,15 @@ async function checkReminders() {
           event.location
         );
         
-        // Show persistent notification with friendly actions
-        self.registration.showNotification(`📚 ${event.title}`, {
-          body: humanMessage,
-          icon: '/pwa-192x192.png',
-          badge: '/pwa-192x192.png',
-          tag: `reminder-${reminder.id}`,
-          requireInteraction: true, // Won't dismiss until user interacts
-          vibrate: [200, 100, 200, 100, 300],
-          actions: [
-            { action: 'ok', title: '✓ Got it!' },
-            { action: 'snooze', title: '⏰ Snooze 5min' }
-          ],
-          data: { 
-            eventId: event.id, 
-            reminderId: reminder.id,
-            eventTitle: event.title,
-            location: event.location
-          }
-        });
+        // Start persistent alarm loop
+        startAlarmLoop(
+          reminder.id,
+          event.title,
+          humanMessage,
+          event.id,
+          event.location,
+          reminder.minutesBefore
+        );
         
         await markReminderTriggered(reminder.id);
       }
@@ -162,31 +215,34 @@ async function checkReminders() {
 self.addEventListener('notificationclick', (event) => {
   const action = event.action;
   const data = event.notification.data || {};
+  const reminderId = data.reminderId;
   
-  if (action === 'ok' || action === 'dismiss') {
-    // User acknowledged - close notification
+  if (action === 'ok') {
+    // User clicked "Got it!" - STOP the alarm loop
+    stopAlarmLoop(reminderId);
     event.notification.close();
   } else if (action === 'snooze') {
-    // Snooze for 5 minutes - show another notification
+    // Stop current alarm, start new one after 5 min
+    stopAlarmLoop(reminderId);
     event.notification.close();
     event.waitUntil(
       (async () => {
         await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
-        self.registration.showNotification(`⏰ Reminder: ${data.eventTitle || 'Your class'}`, {
-          body: `This is your snoozed reminder. Time to go${data.location ? ` to ${data.location}` : ''}!`,
-          icon: '/pwa-192x192.png',
-          badge: '/pwa-192x192.png',
-          tag: `snooze-${Date.now()}`,
-          requireInteraction: true,
-          vibrate: [300, 100, 300],
-          actions: [
-            { action: 'ok', title: '✓ Got it!' }
-          ]
-        });
+        const snoozeId = `snooze-${Date.now()}`;
+        const snoozeMessage = `This is your snoozed reminder for ${data.eventTitle || 'your class'}. Time to go${data.location ? ` to ${data.location}` : ''}!`;
+        startAlarmLoop(
+          snoozeId,
+          `⏰ ${data.eventTitle || 'Your class'}`,
+          snoozeMessage,
+          data.eventId,
+          data.location,
+          data.minutesBefore
+        );
       })()
     );
   } else {
-    // Default click - open/focus app
+    // Default click (tapped notification body) - stop alarm and open app
+    stopAlarmLoop(reminderId);
     event.notification.close();
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -199,6 +255,14 @@ self.addEventListener('notificationclick', (event) => {
       })
     );
   }
+});
+
+// Also handle notification close (swipe dismiss) - keep alarming!
+self.addEventListener('notificationclose', (event) => {
+  const data = event.notification.data || {};
+  const reminderId = data.reminderId;
+  // If user swiped away without clicking "Got it!", the alarm continues
+  // The interval in unacknowledgedReminders will re-show it
 });
 
 // Periodic background sync for reminders (when supported)
