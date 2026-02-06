@@ -2,6 +2,10 @@ import { useEffect, useCallback, useRef } from 'react';
 import { getSettings, getUpcomingReminders, markReminderTriggered, getEvent, Reminder } from '@/lib/db';
 import { speakWithFallback, playNotificationBeep, playReminderSound, humanizeReminderText } from '@/lib/audioFallback';
 
+// Track active alarms that haven't been acknowledged
+const activeAlarms = new Map<string, NodeJS.Timeout>();
+const ALARM_REPEAT_INTERVAL = 15000; // Re-sound every 15 seconds
+
 // Check if notifications are supported and permission granted
  export async function requestNotificationPermission(skipAutoRequest: boolean = false): Promise<boolean> {
   if (!('Notification' in window)) {
@@ -38,9 +42,16 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    // The PWA plugin handles the main SW, but we add our custom one
     const registration = await navigator.serviceWorker.ready;
     console.log('Service Worker ready for notifications');
+    
+    // Listen for acknowledgment messages from SW notification clicks
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'REMINDER_ACKNOWLEDGED') {
+        acknowledgeReminder(event.data.reminderId);
+      }
+    });
+    
     return registration;
   } catch (e) {
     console.warn('Service Worker registration failed:', e);
@@ -131,7 +142,16 @@ export async function showPersistentNotification(title: string, body: string, ta
   };
 }
 
-// Trigger a reminder with notification and optional voice
+// Stop an active alarm (called when user clicks "Got it!")
+export function acknowledgeReminder(reminderId: string): void {
+  const interval = activeAlarms.get(reminderId);
+  if (interval) {
+    clearInterval(interval);
+    activeAlarms.delete(reminderId);
+  }
+}
+
+// Trigger a reminder with persistent alarm behavior
 export async function triggerReminder(reminder: Reminder): Promise<void> {
   const settings = await getSettings();
   const event = await getEvent(reminder.eventId);
@@ -141,7 +161,6 @@ export async function triggerReminder(reminder: Reminder): Promise<void> {
     return;
   }
 
-  // Generate human-friendly message
   const humanMessage = humanizeReminderText(
     event.title,
     reminder.minutesBefore,
@@ -149,25 +168,42 @@ export async function triggerReminder(reminder: Reminder): Promise<void> {
   );
 
   const notificationTitle = `📚 ${event.title}`;
-  const notificationBody = humanMessage;
 
-  // Play attention-grabbing sound
-  playNotificationSound();
-
-  // Show persistent notification (requires user to click OK to dismiss)
-  if (settings.notificationsEnabled) {
-    await showPersistentNotification(notificationTitle, notificationBody, reminder.id);
-  }
-
-  // Voice reminder with human-friendly message
-  if (settings.voiceRemindersEnabled && event.voiceReminderEnabled) {
-    try {
-      await speakText(humanMessage, settings.voiceVolume, settings.voiceRate);
-    } catch (e) {
-      console.warn('Voice reminder failed, playing fallback sound:', e);
-      await playReminderSound({ volume: settings.voiceVolume, urgency: 'high' });
+  // Function to play alarm sounds
+  const playAlarm = async () => {
+    playNotificationSound();
+    
+    if (settings.voiceRemindersEnabled && event.voiceReminderEnabled) {
+      try {
+        await speakText(humanMessage, settings.voiceVolume, settings.voiceRate);
+      } catch (e) {
+        console.warn('Voice reminder failed, playing fallback sound:', e);
+        await playReminderSound({ volume: settings.voiceVolume, urgency: 'high' });
+      }
     }
+  };
+
+  // Play alarm immediately
+  await playAlarm();
+
+  // Show persistent notification
+  if (settings.notificationsEnabled) {
+    await showPersistentNotification(notificationTitle, humanMessage, reminder.id);
   }
+
+  // Set up repeating alarm until acknowledged
+  const intervalId = setInterval(async () => {
+    if (!activeAlarms.has(reminder.id)) {
+      return;
+    }
+    await playAlarm();
+    // Re-show notification to bring it back to attention
+    if (settings.notificationsEnabled) {
+      await showPersistentNotification(notificationTitle, humanMessage, reminder.id);
+    }
+  }, ALARM_REPEAT_INTERVAL);
+
+  activeAlarms.set(reminder.id, intervalId);
 
   await markReminderTriggered(reminder.id);
 }
