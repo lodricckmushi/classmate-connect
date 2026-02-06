@@ -4,7 +4,7 @@ import { speakWithFallback, playNotificationBeep, playReminderSound, humanizeRem
 
 // Track active alarms that haven't been acknowledged
 const activeAlarms = new Map<string, NodeJS.Timeout>();
-const ALARM_REPEAT_INTERVAL = 15000; // Re-sound every 15 seconds
+let ALARM_REPEAT_INTERVAL = 15000; // Default, updated from settings
 
 // Check if notifications are supported and permission granted
  export async function requestNotificationPermission(skipAutoRequest: boolean = false): Promise<boolean> {
@@ -154,6 +154,7 @@ export function acknowledgeReminder(reminderId: string): void {
 // Trigger a reminder with persistent alarm behavior
 export async function triggerReminder(reminder: Reminder): Promise<void> {
   const settings = await getSettings();
+  ALARM_REPEAT_INTERVAL = (settings.alarmRetriggerInterval || 15) * 1000;
   const event = await getEvent(reminder.eventId);
 
   if (!event) {
