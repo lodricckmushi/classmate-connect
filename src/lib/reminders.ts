@@ -192,13 +192,20 @@ export async function triggerReminder(reminder: Reminder): Promise<void> {
     await showPersistentNotification(notificationTitle, humanMessage, reminder.id);
   }
 
-  // Set up repeating alarm until acknowledged
+  // Set up repeating alarm until acknowledged (max 5 minutes)
+  const MAX_ALARM_DURATION = 5 * 60 * 1000; // 5 minutes
+  const alarmStartTime = Date.now();
+
   const intervalId = setInterval(async () => {
     if (!activeAlarms.has(reminder.id)) {
       return;
     }
+    // Auto-stop after 5 minutes to save battery
+    if (Date.now() - alarmStartTime > MAX_ALARM_DURATION) {
+      acknowledgeReminder(reminder.id);
+      return;
+    }
     await playAlarm();
-    // Re-show notification to bring it back to attention
     if (settings.notificationsEnabled) {
       await showPersistentNotification(notificationTitle, humanMessage, reminder.id);
     }
