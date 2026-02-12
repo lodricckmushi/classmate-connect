@@ -3,10 +3,11 @@
 
 const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
 const ALARM_RE_TRIGGER_INTERVAL = 15000; // Re-trigger every 15 seconds until acknowledged
+const MAX_ALARM_DURATION = 5 * 60 * 1000; // Stop alarming after 5 minutes
 const REMINDERS_STORE = 'classping-reminders';
 
 // Track unacknowledged reminders that need to keep alarming
-const unacknowledgedReminders = new Map(); // reminderId -> { eventTitle, location, minutesBefore, intervalId }
+const unacknowledgedReminders = new Map(); // reminderId -> { eventTitle, location, minutesBefore, intervalId, startTime }
 
 // Store reminders in IndexedDB accessible by service worker
 async function openDB() {
@@ -148,20 +149,27 @@ function startAlarmLoop(reminderId, eventTitle, humanMessage, eventId, location,
   // Don't duplicate
   if (unacknowledgedReminders.has(reminderId)) return;
 
+  const startTime = Date.now();
+
   // Show immediately
   showAlarmNotification(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore);
 
-  // Re-trigger every 15 seconds until acknowledged
+  // Re-trigger every interval until acknowledged or 5 min max
   const intervalId = setInterval(() => {
     if (!unacknowledgedReminders.has(reminderId)) {
       clearInterval(intervalId);
+      return;
+    }
+    // Auto-stop after 5 minutes to save battery
+    if (Date.now() - startTime > MAX_ALARM_DURATION) {
+      stopAlarmLoop(reminderId);
       return;
     }
     // Re-show notification (replaces previous via same tag)
     showAlarmNotification(reminderId, eventTitle, humanMessage, eventId, location, minutesBefore);
   }, ALARM_RE_TRIGGER_INTERVAL);
 
-  unacknowledgedReminders.set(reminderId, { intervalId, eventTitle, location, minutesBefore });
+  unacknowledgedReminders.set(reminderId, { intervalId, eventTitle, location, minutesBefore, startTime });
 }
 
 // Stop alarm loop for a reminder and notify frontend
