@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, BellOff, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Bell, BellOff, Clock, AlertCircle, Zap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { getUntriggeredReminders, Reminder, getEvent, ClassEvent } from '@/lib/db';
@@ -15,185 +15,155 @@ export function RemindersView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadReminders = async () => {
+    const load = async () => {
       setLoading(true);
-      const untriggered = await getUntriggeredReminders();
-      
-      // Fetch event details for each reminder
-      const remindersWithEvents = await Promise.all(
-        untriggered.map(async (reminder) => {
-          const event = await getEvent(reminder.eventId);
-          return { ...reminder, event };
-        })
+      const raw = await getUntriggeredReminders();
+      const enriched = await Promise.all(
+        raw.map(async (r) => ({ ...r, event: await getEvent(r.eventId) }))
       );
-
-      // Sort by scheduled time
-      remindersWithEvents.sort((a, b) => a.scheduledTime - b.scheduledTime);
-      
-      setReminders(remindersWithEvents);
+      enriched.sort((a, b) => a.scheduledTime - b.scheduledTime);
+      setReminders(enriched);
       setLoading(false);
     };
 
-    loadReminders();
-    
-    // Refresh every minute
-    const interval = setInterval(loadReminders, 60000);
-    return () => clearInterval(interval);
+    load();
+    const iv = setInterval(load, 60000);
+    return () => clearInterval(iv);
   }, []);
 
-  // Group reminders by day
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const thisWeek = new Date(today);
-  thisWeek.setDate(thisWeek.getDate() + 7);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
 
-  const todayReminders = reminders.filter(r => {
-    const date = new Date(r.scheduledTime);
-    return date >= today && date < tomorrow;
-  });
-
-  const tomorrowReminders = reminders.filter(r => {
-    const date = new Date(r.scheduledTime);
-    const nextDay = new Date(tomorrow);
-    nextDay.setDate(nextDay.getDate() + 1);
-    return date >= tomorrow && date < nextDay;
-  });
-
-  const laterReminders = reminders.filter(r => {
-    const date = new Date(r.scheduledTime);
-    const dayAfterTomorrow = new Date(tomorrow);
-    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
-    return date >= dayAfterTomorrow;
-  });
-
-  const ReminderItem = ({ reminder }: { reminder: ReminderWithEvent }) => {
-    const isPast = reminder.scheduledTime < Date.now();
-    const isUpcoming = reminder.scheduledTime - Date.now() < 30 * 60 * 1000; // Within 30 mins
-
-    return (
-      <motion.div
-        className={cn(
-          'rounded-2xl bg-card p-4 shadow-card',
-          isUpcoming && !isPast && 'ring-2 ring-primary/20'
-        )}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={cn(
-              'mt-0.5 flex h-10 w-10 items-center justify-center rounded-full',
-              isPast ? 'bg-muted' : isUpcoming ? 'bg-primary/10 reminder-pulse' : 'bg-accent'
-            )}
-          >
-            <Bell
-              className={cn(
-                'h-5 w-5',
-                isPast ? 'text-muted-foreground' : isUpcoming ? 'text-primary' : 'text-accent-foreground'
-              )}
-            />
-          </div>
-          
-          <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-foreground truncate">
-              {reminder.event?.title || 'Unknown Event'}
-            </h4>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {reminder.minutesBefore} min before class
-            </p>
-            
-            <div className="mt-2 flex items-center gap-2">
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
-                {new Date(reminder.scheduledTime).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </span>
-              {!isPast && (
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  in {getTimeUntilReminder(reminder.scheduledTime)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {reminder.event && (
-            <div
-              className="h-8 w-1 rounded-full"
-              style={{ backgroundColor: reminder.event.color }}
-            />
-          )}
-        </div>
-      </motion.div>
-    );
-  };
-
-  const ReminderSection = ({ title, reminders, icon: Icon }: { 
-    title: string; 
-    reminders: ReminderWithEvent[];
-    icon: typeof Bell;
-  }) => {
-    if (reminders.length === 0) return null;
-
-    return (
-      <section className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-primary">
-            {title}
-          </h2>
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {reminders.length}
-          </span>
-        </div>
-        <div className="space-y-3">
-          {reminders.map((reminder) => (
-            <ReminderItem key={reminder.id} reminder={reminder} />
-          ))}
-        </div>
-      </section>
-    );
-  };
+  const todayR = reminders.filter(r => new Date(r.scheduledTime) >= today && new Date(r.scheduledTime) < tomorrow);
+  const tomorrowR = reminders.filter(r => new Date(r.scheduledTime) >= tomorrow && new Date(r.scheduledTime) < dayAfter);
+  const laterR = reminders.filter(r => new Date(r.scheduledTime) >= dayAfter);
 
   return (
-    <div className="min-h-screen pb-24">
-      <Header 
-        title="Reminders"
-        subtitle="Upcoming notifications"
-      />
+    <div className="min-h-screen pb-28">
+      <Header title="Reminders" subtitle="Your upcoming alerts" />
 
-      <main className="px-4 py-4">
+      <main className="px-4 py-3">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="flex items-center justify-center py-16">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : reminders.length === 0 ? (
           <motion.div
-            className="mt-8 flex flex-col items-center justify-center text-center"
-            initial={{ opacity: 0, y: 20 }}
+            className="mt-12 flex flex-col items-center text-center gap-3"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-              <BellOff className="h-10 w-10 text-muted-foreground" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+              <BellOff className="h-7 w-7 text-muted-foreground" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-foreground">
-              No upcoming reminders
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add classes with reminders to get notified
-            </p>
+            <div>
+              <h3 className="text-base font-semibold text-foreground">No reminders set</h3>
+              <p className="mt-0.5 text-sm text-muted-foreground">Add classes to get smart alerts</p>
+            </div>
           </motion.div>
         ) : (
           <AnimatePresence>
-            <ReminderSection title="Today" reminders={todayReminders} icon={Bell} />
-            <ReminderSection title="Tomorrow" reminders={tomorrowReminders} icon={Clock} />
-            <ReminderSection title="Later this week" reminders={laterReminders} icon={AlertCircle} />
+            <ReminderGroup title="Today" reminders={todayR} icon={Zap} />
+            <ReminderGroup title="Tomorrow" reminders={tomorrowR} icon={Clock} />
+            <ReminderGroup title="Later" reminders={laterR} icon={AlertCircle} />
           </AnimatePresence>
         )}
       </main>
     </div>
+  );
+}
+
+function ReminderGroup({
+  title, reminders, icon: Icon,
+}: { title: string; reminders: ReminderWithEvent[]; icon: typeof Bell }) {
+  if (reminders.length === 0) return null;
+  return (
+    <section className="mb-5">
+      <div className="mb-2 flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5 text-primary" />
+        <h2 className="text-xs font-bold uppercase tracking-widest text-primary">{title}</h2>
+        <div className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/10">
+          <span className="text-[9px] font-bold text-primary">{reminders.length}</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {reminders.map((r, i) => (
+          <ReminderCard key={r.id} reminder={r} index={i} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReminderCard({ reminder, index }: { reminder: ReminderWithEvent; index: number }) {
+  const isPast = reminder.scheduledTime < Date.now();
+  const isHot = !isPast && reminder.scheduledTime - Date.now() < 30 * 60 * 1000;
+  const timeStr = new Date(reminder.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <motion.div
+      className={cn(
+        'relative rounded-2xl bg-card border overflow-hidden',
+        isHot ? 'border-primary/30' : 'border-border/40',
+      )}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+    >
+      {/* Color accent bar */}
+      {reminder.event?.color && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1"
+          style={{ backgroundColor: reminder.event.color }}
+        />
+      )}
+
+      <div className="flex items-center gap-3 px-3.5 py-3 pl-4">
+        {/* Icon */}
+        <div className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+          isPast ? 'bg-muted' : isHot ? 'bg-primary/10' : 'bg-accent'
+        )}>
+          <Bell className={cn(
+            'h-4 w-4',
+            isPast ? 'text-muted-foreground' : isHot ? 'text-primary' : 'text-accent-foreground'
+          )} />
+          {isHot && (
+            <motion.div
+              className="absolute h-9 w-9 rounded-xl border-2 border-primary/30"
+              animate={{ scale: [1, 1.15, 1], opacity: [1, 0, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+            />
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate">
+            {reminder.event?.title || 'Unknown Class'}
+          </p>
+          <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              {timeStr}
+            </span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs text-muted-foreground">{reminder.minutesBefore} min early</span>
+          </div>
+        </div>
+
+        {/* Countdown */}
+        {!isPast && (
+          <span className={cn(
+            'shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold',
+            isHot ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'
+          )}>
+            {getTimeUntilReminder(reminder.scheduledTime)}
+          </span>
+        )}
+      </div>
+    </motion.div>
   );
 }

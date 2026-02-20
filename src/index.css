@@ -142,8 +142,8 @@
     scroll-behavior: smooth;
   }
 
-  /* Better touch targets for mobile */
-  button, a, input, select, textarea {
+  /* Touch targets - only enforce on interactive elements that need it */
+  input, textarea {
     min-height: 44px;
   }
 }
